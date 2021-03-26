@@ -94,7 +94,7 @@ $(document).ready(function(){
   if(render_format === 'recommend') { link_endpoint = 'recommend'; }
   if(render_format === 'friends') { link_endpoint = 'friends'; }
   if(render_format === 'toptwtr') { link_endpoint = 'toptwtr'; }
-  if(render_format === 'discussions') { link_endpoint = 'discussions'; }
+  // if(render_format === 'discussions') { link_endpoint = 'discussions'; }
 
   var time_ranges = ['day', '3days', 'week', 'month', 'year', 'alltime'];
   var time_txt = {'day':'Last day', '3days': 'Last 3 days', 'week': 'Last week', 'month': 'Last month', 'year': 'Last year', 'alltime': 'All time'}
@@ -150,7 +150,7 @@ $(document).ready(function(){
   if( render_format === 'top') { d3.select('#tabtop').classed('tab-selected', true); }
   if( render_format === 'toptwtr') { d3.select('#tabtwtr').classed('tab-selected', true); }
   if( render_format === 'friends') { d3.select('#tabfriends').classed('tab-selected', true); }
-  if( render_format === 'discussions') { d3.select('#tabdiscussions').classed('tab-selected', true); }
+  // if( render_format === 'discussions') { d3.select('#tabdiscussions').classed('tab-selected', true); }
   if( render_format === 'recommend') { d3.select('#tabrec').classed('tab-selected', true); }
   if( render_format === 'library') { d3.select('#tablib').classed('tab-selected', true); }
 
@@ -179,7 +179,7 @@ $(document).ready(function(){
       <input type="submit" value="Login or Create" class="btn-fancy">
     </form>
     {% else %}
-    <a href="{{ url_for('account') }}">{{ g.user.username }}</a>
+    <a href="">{{ g.user.username }}</a>
     <a href="{{ url_for('logout') }}">log out</a>
     {% endif %}
   </div>
@@ -206,13 +206,6 @@ $(document).ready(function(){
 {% endwith %}
 </div>
 
-{% if render_format == "recent" and g.user.username is not defined %}
-<div id="banner">
-  <div style="float:right;cursor:pointer;" id="xbanner">X</div>
-  New to arxiv-sanity? Check out the <a href="https://youtu.be/S2GY3gh6qC8" target="_blank">introduction video</a>.
-</div>
-{% endif %}
-
 <div id="sbox">
   <form action="/search" method="get">
   	<input name="q" type="text" id="qfield">
@@ -220,19 +213,6 @@ $(document).ready(function(){
   <div id="search_hint"></div>
 </div>
 
-{% if show_prompt == "yes" %}
-<div id="prompt" style="background-color:#f6ff7a; padding:10px; width:980px; margin-left:auto; margin-right:auto; font-size:14px;">
-Hey there {{ g.user.username }}, sorry to interrupt. Arxiv-sanity costs a non-negligible amount of money to host. 
-If you love the site, please consider pitching in:
-  <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_top" style="display:inline-block;">
-  <input type="hidden" name="cmd" value="_s-xclick">
-  <input type="hidden" name="hosted_button_id" value="DRW9PQ2J3U3RJ">
-  <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" alt="PayPal - The safer, easier way to pay online!" style="display:inline-block;height:14px;">
-  <img alt="" border="0" src="https://www.paypalobjects.com/en_US/i/scr/pixel.gif" width="1" height="1">
-  </form>
-To nuke this message away for a long time click <span id="goaway" style="text-decoration: underline;cursor: pointer;">here</span>.
-</div>
-{% endif %}
 
 <div id="pagebar">
   <div class="pagelink" id="tabrecent"><a href="/">most recent</a></div>

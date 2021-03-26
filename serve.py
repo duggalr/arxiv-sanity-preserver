@@ -12,7 +12,7 @@ from hashlib import md5
 from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack
 # from flask_limiter import Limiter
-# from werkzeug import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 # import pymongo
 
 from utils import safe_pickle_dump, strip_version, isvalidid, Config
@@ -258,81 +258,6 @@ def rank(request_pid=None):
   ctx = default_context(papers, render_format='paper')
   return render_template('main.html', **ctx)
 
-# @app.route('/discuss', methods=['GET'])
-# def discuss():
-#   """ return discussion related to a paper """
-#   pid = request.args.get('id', '') # paper id of paper we wish to discuss
-#   papers = [db[pid]] if pid in db else []
-
-#   # fetch the comments
-#   comms_cursor = comments.find({ 'pid':pid }).sort([('time_posted', pymongo.DESCENDING)])
-#   comms = list(comms_cursor)
-#   for c in comms:
-#     c['_id'] = str(c['_id']) # have to convert these to strs from ObjectId, and backwards later http://api.mongodb.com/python/current/tutorial.html
-
-#   # fetch the counts for all tags
-#   tag_counts = []
-#   for c in comms:
-#     cc = [tags_collection.count({ 'comment_id':c['_id'], 'tag_name':t }) for t in TAGS]
-#     tag_counts.append(cc);
-
-#   # and render
-#   ctx = default_context(papers, render_format='default', comments=comms, gpid=pid, tags=TAGS, tag_counts=tag_counts)
-#   return render_template('discuss.html', **ctx)
-
-# @app.route('/comment', methods=['POST'])
-# def comment():
-#   """ user wants to post a comment """
-#   anon = int(request.form['anon'])
-
-#   if g.user and (not anon):
-#     username = get_username(session['user_id'])
-#   else:
-#     # generate a unique username if user wants to be anon, or user not logged in.
-#     username = 'anon-%s-%s' % (str(int(time.time())), str(randrange(1000)))
-
-#   # process the raw pid and validate it, etc
-#   try:
-#     pid = request.form['pid']
-#     if not pid in db: raise Exception("invalid pid")
-#     version = db[pid]['_version'] # most recent version of this paper
-#   except Exception as e:
-#     print(e)
-#     return 'bad pid. This is most likely Andrej\'s fault.'
-
-#   # create the entry
-#   entry = {
-#     'user': username,
-#     'pid': pid, # raw pid with no version, for search convenience
-#     'version': version, # version as int, again as convenience
-#     'conf': request.form['conf'],
-#     'anon': anon,
-#     'time_posted': time.time(),
-#     'text': request.form['text'],
-#   }
-
-#   # enter into database
-#   print(entry)
-#   comments.insert_one(entry)
-#   return 'OK'
-
-# @app.route("/discussions", methods=['GET'])
-# def discussions():
-#   # return most recently discussed papers
-#   comms_cursor = comments.find().sort([('time_posted', pymongo.DESCENDING)]).limit(100)
-
-#   # get the (unique) set of papers.
-#   papers = []
-#   have = set()
-#   for e in comms_cursor:
-#     pid = e['pid']
-#     if pid in db and not pid in have:
-#       have.add(pid)
-#       papers.append(db[pid])
-
-#   ctx = default_context(papers, render_format="discussions")
-#   return render_template('main.html', **ctx)
-
 @app.route('/toggletag', methods=['POST'])
 def toggletag():
 
@@ -386,21 +311,6 @@ def recommend():
   papers = papers_filter_version(papers, vstr)
   ctx = default_context(papers, render_format='recommend',
                         msg='Recommended papers: (based on SVM trained on tfidf of papers in your library, refreshed every day or so)' if g.user else 'You must be logged in and have some papers saved in your library.')
-  return render_template('main.html', **ctx)
-
-@app.route('/top', methods=['GET'])
-def top():
-  """ return top papers """
-  ttstr = request.args.get('timefilter', 'week') # default is week
-  vstr = request.args.get('vfilter', 'all') # default is all (no filter)
-  legend = {'day':1, '3days':3, 'week':7, 'month':30, 'year':365, 'alltime':10000}
-  tt = legend.get(ttstr, 7)
-  curtime = int(time.time()) # in seconds
-  top_sorted_papers = [db[p] for p in TOP_SORTED_PIDS]
-  papers = [p for p in top_sorted_papers if curtime - p['time_published'] < tt*24*60*60]
-  papers = papers_filter_version(papers, vstr)
-  ctx = default_context(papers, render_format='top',
-                        msg='Top papers based on people\'s libraries:')
   return render_template('main.html', **ctx)
 
 @app.route('/toptwtr', methods=['GET'])
@@ -471,163 +381,38 @@ def review():
 
   return ret
 
-@app.route('/friends', methods=['GET'])
-def friends():
-    
-    ttstr = request.args.get('timefilter', 'week') # default is week
-    legend = {'day':1, '3days':3, 'week':7, 'month':30, 'year':365}
-    tt = legend.get(ttstr, 7)
-
-    papers = []
-    pid_to_users = {}
-    if g.user:
-        # gather all the people we are following
-        username = get_username(session['user_id'])
-        edges = list(follow_collection.find({ 'who':username }))
-        # fetch all papers in all of their libraries, and count the top ones
-        counts = {}
-        for edict in edges:
-            whom = edict['whom']
-            uid = get_user_id(whom)
-            user_library = query_db('''select * from library where user_id = ?''', [uid])
-            libids = [strip_version(x['paper_id']) for x in user_library]
-            for lid in libids:
-                if not lid in counts:
-                    counts[lid] = []
-                counts[lid].append(whom)
-
-        keys = list(counts.keys())
-        keys.sort(key=lambda k: len(counts[k]), reverse=True) # descending by count
-        papers = [db[x] for x in keys]
-        # finally filter by date
-        curtime = int(time.time()) # in seconds
-        papers = [x for x in papers if curtime - x['time_published'] < tt*24*60*60]
-        # trim at like 100
-        if len(papers) > 100: papers = papers[:100]
-        # trim counts as well correspondingly
-        pid_to_users = { p['_rawid'] : counts.get(p['_rawid'], []) for p in papers }
-
-    if not g.user:
-        msg = "You must be logged in and follow some people to enjoy this tab."
-    else:
-        if len(papers) == 0:
-            msg = "No friend papers present. Try to extend the time range, or add friends by clicking on your account name (top, right)"
-        else:
-            msg = "Papers in your friend's libraries:"
-
-    ctx = default_context(papers, render_format='friends', pid_to_users=pid_to_users, msg=msg)
-    return render_template('main.html', **ctx)
-
-@app.route('/account')
-def account():
-    ctx = { 'totpapers':len(db) }
-
-    followers = []
-    following = []
-    # fetch all followers/following of the logged in user
-    if g.user:
-        username = get_username(session['user_id'])
-        
-        following_db = list(follow_collection.find({ 'who':username }))
-        for e in following_db:
-            following.append({ 'user':e['whom'], 'active':e['active'] })
-
-        followers_db = list(follow_collection.find({ 'whom':username }))
-        for e in followers_db:
-            followers.append({ 'user':e['who'], 'active':e['active'] })
-
-    ctx['followers'] = followers
-    ctx['following'] = following
-    return render_template('account.html', **ctx)
-
-@app.route('/requestfollow', methods=['POST'])
-def requestfollow():
-    if request.form['newf'] and g.user:
-        # add an entry: this user is requesting to follow a second user
-        who = get_username(session['user_id'])
-        whom = request.form['newf']
-        # make sure whom exists in our database
-        whom_id = get_user_id(whom)
-        if whom_id is not None:
-            e = { 'who':who, 'whom':whom, 'active':0, 'time_request':int(time.time()) }
-            print('adding request follow:')
-            print(e)
-            follow_collection.insert_one(e)
-
-    return redirect(url_for('account'))
-
-@app.route('/removefollow', methods=['POST'])
-def removefollow():
-    user = request.form['user']
-    lst = request.form['lst']
-    if user and lst:
-        username = get_username(session['user_id'])
-        if lst == 'followers':
-            # user clicked "X" in their followers list. Erase the follower of this user
-            who = user
-            whom = username
-        elif lst == 'following':
-            # user clicked "X" in their following list. Stop following this user.
-            who = username
-            whom = user
-        else:
-            return 'NOTOK'
-
-        delq = { 'who':who, 'whom':whom }
-        print('deleting from follow collection:', delq)
-        follow_collection.delete_one(delq)
-        return 'OK'
-    else:
-        return 'NOTOK'
-
-@app.route('/addfollow', methods=['POST'])
-def addfollow():
-    user = request.form['user']
-    lst = request.form['lst']
-    if user and lst:
-        username = get_username(session['user_id'])
-        if lst == 'followers':
-            # user clicked "OK" in the followers list, wants to approve some follower. make active.
-            who = user
-            whom = username
-            delq = { 'who':who, 'whom':whom }
-            print('making active in follow collection:', delq)
-            follow_collection.update_one(delq, {'$set':{'active':1}})
-            return 'OK'
-        
-    return 'NOTOK'
 
 @app.route('/login', methods=['POST'])
 def login():
   """ logs in the user. if the username doesn't exist creates the account """
   
-  # if not request.form['username']:
-  #   flash('You have to enter a username')
-  # elif not request.form['password']:
-  #   flash('You have to enter a password')
-  # elif get_user_id(request.form['username']) is not None:
-  #   # username already exists, fetch all of its attributes
-  #   user = query_db('''select * from user where
-  #         username = ?''', [request.form['username']], one=True)
-  #   if check_password_hash(user['pw_hash'], request.form['password']):
-  #     # password is correct, log in the user
-  #     session['user_id'] = get_user_id(request.form['username'])
-  #     flash('User ' + request.form['username'] + ' logged in.')
-  #   else:
-  #     # incorrect password
-  #     flash('User ' + request.form['username'] + ' already exists, wrong password.')
-  # else:
-  #   # create account and log in
-  #   creation_time = int(time.time())
-  #   g.db.execute('''insert into user (username, pw_hash, creation_time) values (?, ?, ?)''',
-  #     [request.form['username'], 
-  #     generate_password_hash(request.form['password']), 
-  #     creation_time])
-  #   user_id = g.db.execute('select last_insert_rowid()').fetchall()[0][0]
-  #   g.db.commit()
+  if not request.form['username']:
+    flash('You have to enter a username')
+  elif not request.form['password']:
+    flash('You have to enter a password')
+  elif get_user_id(request.form['username']) is not None:
+    # username already exists, fetch all of its attributes
+    user = query_db('''select * from user where
+          username = ?''', [request.form['username']], one=True)
+    if check_password_hash(user['pw_hash'], request.form['password']):
+      # password is correct, log in the user
+      session['user_id'] = get_user_id(request.form['username'])
+      flash('User ' + request.form['username'] + ' logged in.')
+    else:
+      # incorrect password
+      flash('User ' + request.form['username'] + ' already exists, wrong password.')
+  else:
+    # create account and log in
+    creation_time = int(time.time())
+    g.db.execute('''insert into user (username, pw_hash, creation_time) values (?, ?, ?)''',
+      [request.form['username'], 
+      generate_password_hash(request.form['password']), 
+      creation_time])
+    user_id = g.db.execute('select last_insert_rowid()').fetchall()[0][0]
+    g.db.commit()
 
-  #   session['user_id'] = user_id
-  #   flash('New account %s created' % (request.form['username'], ))
+    session['user_id'] = user_id
+    flash('New account %s created' % (request.form['username'], ))
   
   return redirect(url_for('intmain'))
 
