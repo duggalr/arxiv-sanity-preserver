@@ -11,9 +11,9 @@ from sqlite3 import dbapi2 as sqlite3
 from hashlib import md5
 from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack
-from flask_limiter import Limiter
-from werkzeug import check_password_hash, generate_password_hash
-import pymongo
+# from flask_limiter import Limiter
+# from werkzeug import check_password_hash, generate_password_hash
+# import pymongo
 
 from utils import safe_pickle_dump, strip_version, isvalidid, Config
 
@@ -27,7 +27,7 @@ else:
   SECRET_KEY = 'devkey, should be in a file'
 app = Flask(__name__)
 app.config.from_object(__name__)
-limiter = Limiter(app, global_limits=["100 per hour", "20 per minute"])
+# limiter = Limiter(app, global_limits=["100 per hour", "20 per minute"])
 
 # -----------------------------------------------------------------------------
 # utilities for database interactions 
@@ -193,14 +193,14 @@ def encode_json(ps, n=10, send_images=True, send_abstracts=True):
     timestruct = dateutil.parser.parse(p['published'])
     struct['originally_published_time'] = '%s/%s/%s' % (timestruct.month, timestruct.day, timestruct.year)
 
-    # fetch amount of discussion on this paper
-    struct['num_discussion'] = comments.count({ 'pid': p['_rawid'] })
+    # # fetch amount of discussion on this paper
+    # struct['num_discussion'] = comments.count({ 'pid': p['_rawid'] })
 
-    # arxiv comments from the authors (when they submit the paper)
-    cc = p.get('arxiv_comment', '')
-    if len(cc) > 100:
-      cc = cc[:100] + '...' # crop very long comments
-    struct['comment'] = cc
+    # # arxiv comments from the authors (when they submit the paper)
+    # cc = p.get('arxiv_comment', '')
+    # if len(cc) > 100:
+    #   cc = cc[:100] + '...' # crop very long comments
+    # struct['comment'] = cc
 
     ret.append(struct)
   return ret
@@ -258,80 +258,80 @@ def rank(request_pid=None):
   ctx = default_context(papers, render_format='paper')
   return render_template('main.html', **ctx)
 
-@app.route('/discuss', methods=['GET'])
-def discuss():
-  """ return discussion related to a paper """
-  pid = request.args.get('id', '') # paper id of paper we wish to discuss
-  papers = [db[pid]] if pid in db else []
+# @app.route('/discuss', methods=['GET'])
+# def discuss():
+#   """ return discussion related to a paper """
+#   pid = request.args.get('id', '') # paper id of paper we wish to discuss
+#   papers = [db[pid]] if pid in db else []
 
-  # fetch the comments
-  comms_cursor = comments.find({ 'pid':pid }).sort([('time_posted', pymongo.DESCENDING)])
-  comms = list(comms_cursor)
-  for c in comms:
-    c['_id'] = str(c['_id']) # have to convert these to strs from ObjectId, and backwards later http://api.mongodb.com/python/current/tutorial.html
+#   # fetch the comments
+#   comms_cursor = comments.find({ 'pid':pid }).sort([('time_posted', pymongo.DESCENDING)])
+#   comms = list(comms_cursor)
+#   for c in comms:
+#     c['_id'] = str(c['_id']) # have to convert these to strs from ObjectId, and backwards later http://api.mongodb.com/python/current/tutorial.html
 
-  # fetch the counts for all tags
-  tag_counts = []
-  for c in comms:
-    cc = [tags_collection.count({ 'comment_id':c['_id'], 'tag_name':t }) for t in TAGS]
-    tag_counts.append(cc);
+#   # fetch the counts for all tags
+#   tag_counts = []
+#   for c in comms:
+#     cc = [tags_collection.count({ 'comment_id':c['_id'], 'tag_name':t }) for t in TAGS]
+#     tag_counts.append(cc);
 
-  # and render
-  ctx = default_context(papers, render_format='default', comments=comms, gpid=pid, tags=TAGS, tag_counts=tag_counts)
-  return render_template('discuss.html', **ctx)
+#   # and render
+#   ctx = default_context(papers, render_format='default', comments=comms, gpid=pid, tags=TAGS, tag_counts=tag_counts)
+#   return render_template('discuss.html', **ctx)
 
-@app.route('/comment', methods=['POST'])
-def comment():
-  """ user wants to post a comment """
-  anon = int(request.form['anon'])
+# @app.route('/comment', methods=['POST'])
+# def comment():
+#   """ user wants to post a comment """
+#   anon = int(request.form['anon'])
 
-  if g.user and (not anon):
-    username = get_username(session['user_id'])
-  else:
-    # generate a unique username if user wants to be anon, or user not logged in.
-    username = 'anon-%s-%s' % (str(int(time.time())), str(randrange(1000)))
+#   if g.user and (not anon):
+#     username = get_username(session['user_id'])
+#   else:
+#     # generate a unique username if user wants to be anon, or user not logged in.
+#     username = 'anon-%s-%s' % (str(int(time.time())), str(randrange(1000)))
 
-  # process the raw pid and validate it, etc
-  try:
-    pid = request.form['pid']
-    if not pid in db: raise Exception("invalid pid")
-    version = db[pid]['_version'] # most recent version of this paper
-  except Exception as e:
-    print(e)
-    return 'bad pid. This is most likely Andrej\'s fault.'
+#   # process the raw pid and validate it, etc
+#   try:
+#     pid = request.form['pid']
+#     if not pid in db: raise Exception("invalid pid")
+#     version = db[pid]['_version'] # most recent version of this paper
+#   except Exception as e:
+#     print(e)
+#     return 'bad pid. This is most likely Andrej\'s fault.'
 
-  # create the entry
-  entry = {
-    'user': username,
-    'pid': pid, # raw pid with no version, for search convenience
-    'version': version, # version as int, again as convenience
-    'conf': request.form['conf'],
-    'anon': anon,
-    'time_posted': time.time(),
-    'text': request.form['text'],
-  }
+#   # create the entry
+#   entry = {
+#     'user': username,
+#     'pid': pid, # raw pid with no version, for search convenience
+#     'version': version, # version as int, again as convenience
+#     'conf': request.form['conf'],
+#     'anon': anon,
+#     'time_posted': time.time(),
+#     'text': request.form['text'],
+#   }
 
-  # enter into database
-  print(entry)
-  comments.insert_one(entry)
-  return 'OK'
+#   # enter into database
+#   print(entry)
+#   comments.insert_one(entry)
+#   return 'OK'
 
-@app.route("/discussions", methods=['GET'])
-def discussions():
-  # return most recently discussed papers
-  comms_cursor = comments.find().sort([('time_posted', pymongo.DESCENDING)]).limit(100)
+# @app.route("/discussions", methods=['GET'])
+# def discussions():
+#   # return most recently discussed papers
+#   comms_cursor = comments.find().sort([('time_posted', pymongo.DESCENDING)]).limit(100)
 
-  # get the (unique) set of papers.
-  papers = []
-  have = set()
-  for e in comms_cursor:
-    pid = e['pid']
-    if pid in db and not pid in have:
-      have.add(pid)
-      papers.append(db[pid])
+#   # get the (unique) set of papers.
+#   papers = []
+#   have = set()
+#   for e in comms_cursor:
+#     pid = e['pid']
+#     if pid in db and not pid in have:
+#       have.add(pid)
+#       papers.append(db[pid])
 
-  ctx = default_context(papers, render_format="discussions")
-  return render_template('main.html', **ctx)
+#   ctx = default_context(papers, render_format="discussions")
+#   return render_template('main.html', **ctx)
 
 @app.route('/toggletag', methods=['POST'])
 def toggletag():
@@ -601,33 +601,33 @@ def addfollow():
 def login():
   """ logs in the user. if the username doesn't exist creates the account """
   
-  if not request.form['username']:
-    flash('You have to enter a username')
-  elif not request.form['password']:
-    flash('You have to enter a password')
-  elif get_user_id(request.form['username']) is not None:
-    # username already exists, fetch all of its attributes
-    user = query_db('''select * from user where
-          username = ?''', [request.form['username']], one=True)
-    if check_password_hash(user['pw_hash'], request.form['password']):
-      # password is correct, log in the user
-      session['user_id'] = get_user_id(request.form['username'])
-      flash('User ' + request.form['username'] + ' logged in.')
-    else:
-      # incorrect password
-      flash('User ' + request.form['username'] + ' already exists, wrong password.')
-  else:
-    # create account and log in
-    creation_time = int(time.time())
-    g.db.execute('''insert into user (username, pw_hash, creation_time) values (?, ?, ?)''',
-      [request.form['username'], 
-      generate_password_hash(request.form['password']), 
-      creation_time])
-    user_id = g.db.execute('select last_insert_rowid()').fetchall()[0][0]
-    g.db.commit()
+  # if not request.form['username']:
+  #   flash('You have to enter a username')
+  # elif not request.form['password']:
+  #   flash('You have to enter a password')
+  # elif get_user_id(request.form['username']) is not None:
+  #   # username already exists, fetch all of its attributes
+  #   user = query_db('''select * from user where
+  #         username = ?''', [request.form['username']], one=True)
+  #   if check_password_hash(user['pw_hash'], request.form['password']):
+  #     # password is correct, log in the user
+  #     session['user_id'] = get_user_id(request.form['username'])
+  #     flash('User ' + request.form['username'] + ' logged in.')
+  #   else:
+  #     # incorrect password
+  #     flash('User ' + request.form['username'] + ' already exists, wrong password.')
+  # else:
+  #   # create account and log in
+  #   creation_time = int(time.time())
+  #   g.db.execute('''insert into user (username, pw_hash, creation_time) values (?, ?, ?)''',
+  #     [request.form['username'], 
+  #     generate_password_hash(request.form['password']), 
+  #     creation_time])
+  #   user_id = g.db.execute('select last_insert_rowid()').fetchall()[0][0]
+  #   g.db.commit()
 
-    session['user_id'] = user_id
-    flash('New account %s created' % (request.form['username'], ))
+  #   session['user_id'] = user_id
+  #   flash('New account %s created' % (request.form['username'], ))
   
   return redirect(url_for('intmain'))
 
@@ -645,7 +645,7 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('-p', '--prod', dest='prod', action='store_true', help='run in prod?')
   parser.add_argument('-r', '--num_results', dest='num_results', type=int, default=200, help='number of results to return per query')
-  parser.add_argument('--port', dest='port', type=int, default=5000, help='port to serve on')
+  parser.add_argument('--port', dest='port', type=int, default=8000, help='port to serve on')
   args = parser.parse_args()
   print(args)
 
@@ -677,38 +677,43 @@ if __name__ == "__main__":
   SEARCH_DICT = cache['search_dict']
 
   print('connecting to mongodb...')
-  client = pymongo.MongoClient()
-  mdb = client.arxiv
-  tweets_top1 = mdb.tweets_top1
-  tweets_top7 = mdb.tweets_top7
-  tweets_top30 = mdb.tweets_top30
-  comments = mdb.comments
-  tags_collection = mdb.tags
-  goaway_collection = mdb.goaway
-  follow_collection = mdb.follow
-  print('mongodb tweets_top1 collection size:', tweets_top1.count())
-  print('mongodb tweets_top7 collection size:', tweets_top7.count())
-  print('mongodb tweets_top30 collection size:', tweets_top30.count())
-  print('mongodb comments collection size:', comments.count())
-  print('mongodb tags collection size:', tags_collection.count())
-  print('mongodb goaway collection size:', goaway_collection.count())
-  print('mongodb follow collection size:', follow_collection.count())
+  # client = pymongo.MongoClient()
+  # mdb = client.arxiv
+  # tweets_top1 = mdb.tweets_top1
+  # tweets_top7 = mdb.tweets_top7
+  # tweets_top30 = mdb.tweets_top30
+  # comments = mdb.comments
+  # tags_collection = mdb.tags
+  # goaway_collection = mdb.goaway
+  # follow_collection = mdb.follow
+  # print('mongodb tweets_top1 collection size:', tweets_top1.count())
+  # print('mongodb tweets_top7 collection size:', tweets_top7.count())
+  # print('mongodb tweets_top30 collection size:', tweets_top30.count())
+  # print('mongodb comments collection size:', comments.count())
+  # print('mongodb tags collection size:', tags_collection.count())
+  # print('mongodb goaway collection size:', goaway_collection.count())
+  # print('mongodb follow collection size:', follow_collection.count())
   
   TAGS = ['insightful!', 'thank you', 'agree', 'disagree', 'not constructive', 'troll', 'spam']
 
-  # start
-  if args.prod:
-    # run on Tornado instead, since running raw Flask in prod is not recommended
-    print('starting tornado!')
-    from tornado.wsgi import WSGIContainer
-    from tornado.httpserver import HTTPServer
-    from tornado.ioloop import IOLoop
-    from tornado.log import enable_pretty_logging
-    enable_pretty_logging()
-    http_server = HTTPServer(WSGIContainer(app))
-    http_server.listen(args.port)
-    IOLoop.instance().start()
-  else:
-    print('starting flask!')
-    app.debug = False
-    app.run(port=args.port, host='0.0.0.0')
+  print('starting flask!')
+  app.debug = False
+  app.run(port=args.port)
+
+
+  # # start
+  # if args.prod:
+  #   # run on Tornado instead, since running raw Flask in prod is not recommended
+  #   print('starting tornado!')
+  #   from tornado.wsgi import WSGIContainer
+  #   from tornado.httpserver import HTTPServer
+  #   from tornado.ioloop import IOLoop
+  #   from tornado.log import enable_pretty_logging
+  #   enable_pretty_logging()
+  #   http_server = HTTPServer(WSGIContainer(app))
+  #   http_server.listen(args.port)
+  #   IOLoop.instance().start()
+  # else:
+  #   print('starting flask!')
+  #   app.debug = False
+  #   app.run(port=args.port, host='0.0.0.0')
